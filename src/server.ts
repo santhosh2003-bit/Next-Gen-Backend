@@ -3,9 +3,13 @@ import { env } from './config/env.js';
 import { initRealtime } from './common/realtime.js';
 import { prisma } from './common/prisma.js';
 import { redis } from './common/redis.js';
+import { ensureBootstrap } from './common/bootstrap.js';
 
 async function main() {
   const app = await buildApp();
+
+  // Ensure the admin account + core roles exist (idempotent) — no shell needed.
+  await ensureBootstrap();
 
   await app.listen({ host: env.HOST, port: env.PORT });
   initRealtime(app);

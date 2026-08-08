@@ -21,4 +21,6 @@ COPY --from=build /app/dist ./dist
 EXPOSE 4000
 # dumb-init reaps zombies and forwards signals for graceful shutdown.
 ENTRYPOINT ["dumb-init", "--"]
-CMD ["node", "dist/server.js"]
+# Apply DB migrations on boot, then start the server (no shell/seed step needed —
+# the admin account is created in-app on startup). See src/common/bootstrap.ts.
+CMD ["sh", "-c", "npx prisma migrate deploy && exec node dist/server.js"]
