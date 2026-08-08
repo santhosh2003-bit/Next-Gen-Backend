@@ -23,4 +23,6 @@ EXPOSE 4000
 ENTRYPOINT ["dumb-init", "--"]
 # Apply DB migrations on boot, then start the server (no shell/seed step needed —
 # the admin account is created in-app on startup). See src/common/bootstrap.ts.
-CMD ["sh", "-c", "npx prisma migrate deploy && exec node dist/server.js"]
+# PRISMA_SCHEMA_DISABLE_ADVISORY_LOCK avoids the P1002 advisory-lock timeout on
+# serverless Postgres (Neon) — safe because only one instance migrates on boot.
+CMD ["sh", "-c", "PRISMA_SCHEMA_DISABLE_ADVISORY_LOCK=true npx prisma migrate deploy && exec node dist/server.js"]
