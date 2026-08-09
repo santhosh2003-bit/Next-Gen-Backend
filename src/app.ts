@@ -8,7 +8,7 @@ import fastifyStatic from '@fastify/static';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import { mkdirSync } from 'node:fs';
-import { env, UPLOAD_ROOT } from './config/env.js';
+import { env, isProd, UPLOAD_ROOT } from './config/env.js';
 import { loggerConfig } from './common/logger.js';
 import { ok } from './common/response.js';
 import authPlugin from './plugins/auth.js';
@@ -53,7 +53,11 @@ export async function buildApp(): Promise<FastifyInstance> {
       },
     },
   });
-  await app.register(swaggerUi, { routePrefix: '/docs' });
+  // Expose the interactive docs only outside production to avoid publishing the
+  // full API surface to the internet.
+  if (!isProd) {
+    await app.register(swaggerUi, { routePrefix: '/docs' });
+  }
 
   // Static serving for locally-stored media uploads (product images, etc.).
   mkdirSync(UPLOAD_ROOT, { recursive: true });
