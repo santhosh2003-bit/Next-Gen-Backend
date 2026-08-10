@@ -35,6 +35,10 @@ export const createProductSchema = z.object({
 
 export const updateProductSchema = createProductSchema.partial().omit({ images: true, variants: true });
 
+export const bulkCreateProductSchema = z.object({
+  items: z.array(createProductSchema).min(1).max(500),
+});
+
 export const listProductsQuery = z.object({
   page: z.coerce.number().optional(),
   pageSize: z.coerce.number().optional(),

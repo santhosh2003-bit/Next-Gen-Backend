@@ -10,3 +10,7 @@ export const createCategorySchema = z.object({
 });
 
 export const updateCategorySchema = createCategorySchema.partial();
+
+export const bulkCreateCategorySchema = z.object({
+  items: z.array(createCategorySchema).min(1).max(1000),
+});

@@ -8,3 +8,7 @@ export const createBrandSchema = z.object({
 });
 
 export const updateBrandSchema = createBrandSchema.partial();
+
+export const bulkCreateBrandSchema = z.object({
+  items: z.array(createBrandSchema).min(1).max(1000),
+});

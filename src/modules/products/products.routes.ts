@@ -4,6 +4,7 @@ import { validate } from '../../common/validation.js';
 import { productsService } from './products.service.js';
 import { recordAudit } from '../../common/audit.js';
 import {
+  bulkCreateProductSchema,
   createProductSchema,
   listProductsQuery,
   productImageSchema,
@@ -41,6 +42,17 @@ export default async function productsRoutes(app: FastifyInstance) {
       metadata: { sku: product.sku, name: product.name }, ipAddress: req.ip,
     });
     return reply.status(201).send(ok(product));
+  });
+
+  // Bulk create — one request stores all rows (data + images) in the DB.
+  app.post('/bulk', write, async (req, reply) => {
+    const { items } = validate(bulkCreateProductSchema, req.body);
+    const result = await productsService.createMany(items);
+    await recordAudit({
+      userId: req.authUser!.id, action: 'product.bulk_create', entity: 'product',
+      metadata: { count: items.length, created: result.created, failed: result.failed }, ipAddress: req.ip,
+    });
+    return reply.status(201).send(ok(result));
   });
 
   app.patch('/:id', write, async (req) => {

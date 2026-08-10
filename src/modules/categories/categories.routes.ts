@@ -2,7 +2,8 @@ import type { FastifyInstance } from 'fastify';
 import { ok } from '../../common/response.js';
 import { validate } from '../../common/validation.js';
 import { categoriesService } from './categories.service.js';
-import { createCategorySchema, updateCategorySchema } from './categories.schema.js';
+import { bulkCreateCategorySchema, createCategorySchema, updateCategorySchema } from './categories.schema.js';
+import { recordAudit } from '../../common/audit.js';
 
 export default async function categoriesRoutes(app: FastifyInstance) {
   app.get('/', async (req) => {
@@ -22,6 +23,17 @@ export default async function categoriesRoutes(app: FastifyInstance) {
   app.post('/', guard, async (req, reply) => {
     const input = validate(createCategorySchema, req.body);
     return reply.status(201).send(ok(await categoriesService.create(input)));
+  });
+
+  // Bulk create — one request stores all rows in the DB.
+  app.post('/bulk', guard, async (req, reply) => {
+    const { items } = validate(bulkCreateCategorySchema, req.body);
+    const result = await categoriesService.createMany(items);
+    await recordAudit({
+      userId: req.authUser!.id, action: 'category.bulk_create', entity: 'category',
+      metadata: { count: items.length, created: result.created, failed: result.failed }, ipAddress: req.ip,
+    });
+    return reply.status(201).send(ok(result));
   });
 
   app.patch('/:id', guard, async (req) => {

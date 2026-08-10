@@ -5,6 +5,7 @@ import { parsePagination } from "../../common/response.js";
 import { uniqueSlug } from "../../common/slug.js";
 import { cache } from '../../common/redis.js';
 import { deleteFromCloudinary } from '../../common/cloudinary.js';
+import { runBulk } from '../../common/bulk.js';
 import type { z } from "zod";
 import type {
   createProductSchema,
@@ -19,14 +20,6 @@ const productInclude = {
   category: { select: { id: true, name: true, slug: true } },
   brand: { select: { id: true, name: true, slug: true } },
 } satisfies Prisma.ProductInclude;
-
-async function deleteCloudinaryAssetIfPresent(
-  item: { publicId?: string | null } | null | undefined,
-) {
-  if (!item || !("publicId" in item)) return;
-  const publicId = item.publicId ?? null;
-  if (publicId) await deleteFromCloudinary(publicId);
-}
 
 function orderBy(sort?: string): Prisma.ProductOrderByWithRelationInput {
   switch (sort) {
@@ -145,6 +138,11 @@ export const productsService = {
     });
     await cache.invalidateNamespace('catalog');
     return created;
+  },
+
+  /** Bulk create — reuses `create` per item, capturing per-row results. */
+  async createMany(items: z.infer<typeof createProductSchema>[]) {
+    return runBulk(items, (item) => this.create(item));
   },
 
   async update(id: string, input: z.infer<typeof updateProductSchema>) {

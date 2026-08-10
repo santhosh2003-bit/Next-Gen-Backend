@@ -2,6 +2,7 @@ import { prisma } from '../../common/prisma.js';
 import { NotFoundError } from '../../common/errors.js';
 import { uniqueSlug } from '../../common/slug.js';
 import { cache } from '../../common/redis.js';
+import { runBulk } from '../../common/bulk.js';
 import type { z } from 'zod';
 import type { createCategorySchema, updateCategorySchema } from './categories.schema.js';
 
@@ -45,6 +46,11 @@ export const categoriesService = {
     });
     await cache.invalidateNamespace('catalog');
     return created;
+  },
+
+  /** Bulk create — reuses `create` per item, capturing per-row results. */
+  async createMany(items: z.infer<typeof createCategorySchema>[]) {
+    return runBulk(items, (item) => this.create(item));
   },
 
   async update(id: string, input: z.infer<typeof updateCategorySchema>) {
