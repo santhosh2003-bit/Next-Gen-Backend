@@ -309,6 +309,7 @@ model ProductImage {
   productId String   @db.Uuid
   url       String
   alt       String?
+  publicId         String?
   position  Int      @default(0)
   isPrimary Boolean  @default(false)
   createdAt DateTime @default(now())

@@ -67,6 +67,14 @@ export default async function productsRoutes(app: FastifyInstance) {
     return reply.status(201).send(ok(image));
   });
 
+  app.put('/:id/images/:imageId', write, async (req) => {
+    const input = validate(productImageSchema, req.body);
+    const { id, imageId } = req.params as { id: string; imageId: string };
+    const image = await productsService.replaceImage(id, imageId, input);
+    await recordAudit({ userId: req.authUser!.id, action: 'product.image.replace', entity: 'product', entityId: id, metadata: { imageId }, ipAddress: req.ip });
+    return ok(image);
+  });
+
   app.delete('/:id/images/:imageId', write, async (req) => {
     const { id, imageId } = req.params as { id: string; imageId: string };
     const result = await productsService.removeImage(id, imageId);

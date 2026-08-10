@@ -4,6 +4,7 @@ import { NotFoundError } from "../../common/errors.js";
 import { parsePagination } from "../../common/response.js";
 import { uniqueSlug } from "../../common/slug.js";
 import { cache } from '../../common/redis.js';
+import { deleteFromCloudinary } from '../../common/cloudinary.js';
 import type { z } from "zod";
 import type {
   createProductSchema,
@@ -18,6 +19,14 @@ const productInclude = {
   category: { select: { id: true, name: true, slug: true } },
   brand: { select: { id: true, name: true, slug: true } },
 } satisfies Prisma.ProductInclude;
+
+async function deleteCloudinaryAssetIfPresent(
+  item: { publicId?: string | null } | null | undefined,
+) {
+  if (!item || !("publicId" in item)) return;
+  const publicId = item.publicId ?? null;
+  if (publicId) await deleteFromCloudinary(publicId);
+}
 
 function orderBy(sort?: string): Prisma.ProductOrderByWithRelationInput {
   switch (sort) {
@@ -184,9 +193,14 @@ export const productsService = {
   },
 
   async removeImage(productId: string, imageId: string) {
+    const row = await prisma.productImage.findFirst({ where: { id: imageId, productId } });
+    if (!row) return { success: true };
+
+    // Delete the remote file in Cloudinary first, then the DB row.
+    await deleteFromCloudinary(row.publicId);
+
     await prisma.$transaction(async (tx) => {
-      const deleted = await tx.productImage.deleteMany({ where: { id: imageId, productId } });
-      if (!deleted.count) return;
+      await tx.productImage.delete({ where: { id: row.id } });
       const primary = await tx.productImage.findFirst({ where: { productId, isPrimary: true } });
       if (!primary) {
         const fallback = await tx.productImage.findFirst({ where: { productId }, orderBy: { position: 'asc' } });
@@ -195,6 +209,31 @@ export const productsService = {
     });
     await cache.invalidateNamespace('catalog');
     return { success: true };
+  },
+
+  async replaceImage(
+    productId: string,
+    imageId: string,
+    next: z.infer<typeof import("./products.schema.js").productImageSchema>,
+  ) {
+    const old = await prisma.productImage.findFirst({ where: { id: imageId, productId } });
+    if (!old) throw new NotFoundError("Image not found");
+
+    // Remove the old Cloudinary file first, then point the row at the new one.
+    if (old.publicId && old.publicId !== next.publicId) {
+      await deleteFromCloudinary(old.publicId);
+    }
+
+    const updated = await prisma.productImage.update({
+      where: { id: old.id },
+      data: {
+        url: next.url,
+        publicId: next.publicId ?? null,
+        alt: next.alt ?? old.alt,
+      },
+    });
+    await cache.invalidateNamespace('catalog');
+    return updated;
   },
 
   // ── Variants ───────────────────────────────────────────

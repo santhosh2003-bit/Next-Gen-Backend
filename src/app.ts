@@ -4,11 +4,9 @@ import helmet from '@fastify/helmet';
 import sensible from '@fastify/sensible';
 import rateLimit from '@fastify/rate-limit';
 import cookie from '@fastify/cookie';
-import fastifyStatic from '@fastify/static';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
-import { mkdirSync } from 'node:fs';
-import { env, isProd, UPLOAD_ROOT } from './config/env.js';
+import { env, isProd } from './config/env.js';
 import { loggerConfig } from './common/logger.js';
 import { ok } from './common/response.js';
 import authPlugin from './plugins/auth.js';
@@ -58,16 +56,6 @@ export async function buildApp(): Promise<FastifyInstance> {
   if (!isProd) {
     await app.register(swaggerUi, { routePrefix: '/docs' });
   }
-
-  // Static serving for locally-stored media uploads (product images, etc.).
-  mkdirSync(UPLOAD_ROOT, { recursive: true });
-  await app.register(fastifyStatic, {
-    root: UPLOAD_ROOT,
-    prefix: '/uploads/',
-    decorateReply: false,
-    cacheControl: true,
-    maxAge: '7d',
-  });
 
   // Auth + error handling
   await app.register(authPlugin);

@@ -41,6 +41,9 @@ const envSchema = z.object({
 
   CURRENCY: z.string().default('INR'),
   DEFAULT_TAX_RATE: z.coerce.number().default(18),
+  CLOUDINARY_CLOUD_NAME: z.string(),
+  CLOUDINARY_API_KEY: z.string(),
+  CLOUDINARY_API_SECRET: z.string(),
 });
 
 const parsed = envSchema.safeParse(process.env);

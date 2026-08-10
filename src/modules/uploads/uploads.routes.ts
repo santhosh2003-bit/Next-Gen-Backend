@@ -1,28 +1,21 @@
-import { randomUUID } from 'node:crypto';
-import { createWriteStream } from 'node:fs';
-import { mkdir, unlink } from 'node:fs/promises';
-import path from 'node:path';
-import { pipeline } from 'node:stream/promises';
 import type { FastifyInstance } from 'fastify';
 import multipart from '@fastify/multipart';
+import type { UploadApiResponse } from 'cloudinary';
 import { ok } from '../../common/response.js';
 import { BadRequestError } from '../../common/errors.js';
 import { recordAudit } from '../../common/audit.js';
-import { env, UPLOAD_ROOT } from '../../config/env.js';
+import { env } from '../../config/env.js';
+import { cloudinary, deleteFromCloudinary } from '../../common/cloudinary.js';
 
-/** Accepted image MIME types → file extension. */
-const ALLOWED_TYPES = new Map<string, string>([
-  ['image/jpeg', '.jpg'],
-  ['image/png', '.png'],
-  ['image/webp', '.webp'],
-  ['image/gif', '.gif'],
-]);
+/** Accepted image MIME types. */
+const ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 
 /**
- * Media uploads. Admin-gated (product:write). Stores files on the server's
- * local disk under UPLOAD_ROOT; they are served statically at /uploads by
- * the app. Returns an absolute URL derived from the requesting host so it is
- * reachable by whoever uploaded it (LAN device today, public domain in prod).
+ * Media uploads. Admin-gated (product:write). Streams files straight to
+ * Cloudinary (no local disk — Render's disk is ephemeral) and returns the
+ * permanent CDN url plus the Cloudinary public_id. Callers must persist BOTH:
+ * the url to render, and the public_id so the image can later be deleted or
+ * replaced in Cloudinary.
  */
 export default async function uploadsRoutes(app: FastifyInstance) {
   await app.register(multipart, {
@@ -35,37 +28,40 @@ export default async function uploadsRoutes(app: FastifyInstance) {
     const file = await req.file();
     if (!file) throw new BadRequestError('No file uploaded — expected a multipart field named "file".');
 
-    const ext = ALLOWED_TYPES.get(file.mimetype);
-    if (!ext) throw new BadRequestError('Unsupported image type. Use JPEG, PNG, WebP or GIF.');
-
-    const filename = `${Date.now()}-${randomUUID()}${ext}`;
-    const dest = path.join(UPLOAD_ROOT, filename);
-    await mkdir(UPLOAD_ROOT, { recursive: true });
-
-    try {
-      await pipeline(file.file, createWriteStream(dest));
-    } catch (err) {
-      await unlink(dest).catch(() => {});
-      throw err;
+    if (!ALLOWED_TYPES.has(file.mimetype)) {
+      throw new BadRequestError('Unsupported image type. Use JPEG, PNG, WebP or GIF.');
     }
 
+    // Pipe the incoming multipart stream directly into Cloudinary.
+    const result = await new Promise<UploadApiResponse>((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        { folder: 'nextgen/products', resource_type: 'image' },
+        (error, res) => {
+          if (error || !res) reject(error ?? new Error('Cloudinary upload failed'));
+          else resolve(res);
+        },
+      );
+      file.file.on('error', reject);
+      file.file.pipe(stream);
+    });
+
     // @fastify/multipart flags truncation instead of throwing when the stream
-    // is drained; treat a truncated write as an over-limit rejection.
+    // is drained; a truncated write means the file exceeded the size limit.
+    // Remove the partial upload from Cloudinary and reject.
     if (file.file.truncated) {
-      await unlink(dest).catch(() => {});
+      await deleteFromCloudinary(result.public_id);
       throw new BadRequestError(`Image exceeds the ${env.MAX_UPLOAD_MB}MB size limit.`);
     }
 
-    const host = req.headers.host ?? req.hostname;
-    const url = `${req.protocol}://${host}/uploads/${filename}`;
     await recordAudit({
       userId: req.authUser!.id,
       action: 'media.upload',
       entity: 'media',
-      entityId: filename,
+      entityId: result.public_id,
       metadata: { mimetype: file.mimetype },
       ipAddress: req.ip,
     });
-    return reply.status(201).send(ok({ url, filename }));
+
+    return reply.status(201).send(ok({ url: result.secure_url, publicId: result.public_id }));
   });
 }
