@@ -42,13 +42,16 @@ export const analyticsService = {
 
   /** Day-wise revenue from paid orders (last `days` days). */
   async revenueDaily(days = 30) {
+    // Compute the cutoff in JS and bind it as a timestamp — avoids the fragile
+    // make_interval(days => $1) parameter binding that Postgres can't type-resolve.
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
     const rows = await prisma.$queryRaw<{ day: Date; orders: bigint; revenue: unknown }[]>`
       SELECT date_trunc('day', "paidAt") AS day,
              count(*)::bigint AS orders,
              coalesce(sum("grandTotal"), 0) AS revenue
       FROM "orders"
       WHERE "paidAt" IS NOT NULL
-        AND "paidAt" >= now() - make_interval(days => ${days})
+        AND "paidAt" >= ${since}
       GROUP BY 1
       ORDER BY 1 DESC;
     `;
