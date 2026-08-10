@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { ok, paginated } from '../../common/response.js';
 import { validate } from '../../common/validation.js';
 import { ordersService } from './orders.service.js';
-import { listOrdersQuery, updateStatusSchema } from './orders.schema.js';
+import { listOrdersQuery, markPaidSchema, updateStatusSchema } from './orders.schema.js';
 
 export default async function ordersRoutes(app: FastifyInstance) {
   // ── Customer ──────────────────────────────────────────
@@ -46,5 +46,12 @@ export default async function ordersRoutes(app: FastifyInstance) {
         expectedDeliveryAt: input.expectedDeliveryAt,
       }),
     );
+  });
+
+  // Admin marks payment received/not — only paid orders count toward revenue.
+  app.patch('/:id/paid', adminGuard, async (req) => {
+    const { id } = req.params as { id: string };
+    const { paid } = validate(markPaidSchema, req.body);
+    return ok(await ordersService.setPaid(id, paid));
   });
 }

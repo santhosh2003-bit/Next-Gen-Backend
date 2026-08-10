@@ -8,7 +8,8 @@ export const analyticsService = {
       prisma.product.count({ where: { deletedAt: null, status: 'ACTIVE' } }),
       prisma.order.count(),
       prisma.order.aggregate({
-        where: { status: { in: ['CONFIRMED', 'PACKED', 'SHIPPED', 'DELIVERED'] } },
+        // Revenue counts only orders the admin has marked as paid.
+        where: { paidAt: { not: null } },
         _sum: { grandTotal: true },
       }),
       prisma.order.count({ where: { status: 'PENDING' } }),
@@ -36,6 +37,25 @@ export const analyticsService = {
       status: r.status,
       orders: r._count._all,
       revenue: Number(r._sum.grandTotal ?? 0),
+    }));
+  },
+
+  /** Day-wise revenue from paid orders (last `days` days). */
+  async revenueDaily(days = 30) {
+    const rows = await prisma.$queryRaw<{ day: Date; orders: bigint; revenue: unknown }[]>`
+      SELECT date_trunc('day', "paidAt") AS day,
+             count(*)::bigint AS orders,
+             coalesce(sum("grandTotal"), 0) AS revenue
+      FROM "orders"
+      WHERE "paidAt" IS NOT NULL
+        AND "paidAt" >= now() - make_interval(days => ${days})
+      GROUP BY 1
+      ORDER BY 1 DESC;
+    `;
+    return rows.map((r) => ({
+      date: r.day.toISOString().slice(0, 10),
+      orders: Number(r.orders),
+      revenue: Number(r.revenue),
     }));
   },
 

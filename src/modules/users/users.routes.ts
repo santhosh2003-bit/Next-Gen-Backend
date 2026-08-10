@@ -57,6 +57,26 @@ export default async function usersRoutes(app: FastifyInstance) {
     },
   );
 
+  // Customers list with order count + lifetime paid spend.
+  app.get(
+    '/customers',
+    { onRequest: [app.authenticate], preHandler: [app.requirePermissions('user:read')] },
+    async (req) => {
+      const { items, page, pageSize, total } = await usersService.listCustomers(req.query as never);
+      return paginated(items, page, pageSize, total);
+    },
+  );
+
+  // A single customer's profile + order history.
+  app.get(
+    '/:id/orders',
+    { onRequest: [app.authenticate], preHandler: [app.requirePermissions('user:read')] },
+    async (req) => {
+      const { id } = req.params as { id: string };
+      return ok(await usersService.customerOrders(id));
+    },
+  );
+
   app.patch(
     '/:id/status',
     { onRequest: [app.authenticate], preHandler: [app.requirePermissions('user:update')] },

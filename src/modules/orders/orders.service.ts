@@ -126,6 +126,21 @@ export const ordersService = {
   },
 
   /**
+   * Admin toggles whether an order's payment has been received. Only paid
+   * orders count toward revenue (see analytics). Idempotent: keeps the original
+   * paidAt timestamp when already paid.
+   */
+  async setPaid(id: string, paid: boolean) {
+    const order = await prisma.order.findUnique({ where: { id } });
+    if (!order) throw new NotFoundError('Order not found');
+    return prisma.order.update({
+      where: { id },
+      data: { paidAt: paid ? order.paidAt ?? new Date() : null },
+      include: orderInclude,
+    });
+  },
+
+  /**
    * Mark an order confirmed after payment capture, committing the reserved
    * stock into an actual decrement. Used by the payment webhook/verify flow.
    */

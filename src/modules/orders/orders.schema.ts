@@ -22,3 +22,7 @@ export const updateStatusSchema = z.object({
   note: z.string().optional(),
   expectedDeliveryAt: z.string().datetime().nullable().optional(),
 });
+
+export const markPaidSchema = z.object({
+  paid: z.boolean(),
+});

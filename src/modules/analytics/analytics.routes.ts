@@ -8,6 +8,10 @@ export default async function analyticsRoutes(app: FastifyInstance) {
 
   app.get('/dashboard', guard, async () => ok(await analyticsService.dashboard()));
   app.get('/revenue-by-status', guard, async () => ok(await analyticsService.revenueByStatus()));
+  app.get('/revenue-daily', guard, async (req) => {
+    const { days } = req.query as { days?: string };
+    return ok(await analyticsService.revenueDaily(Number(days) || 30));
+  });
   app.get('/top-products', guard, async (req) => {
     const { limit } = req.query as { limit?: string };
     return ok(await analyticsService.topProducts(Number(limit) || 10));

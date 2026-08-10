@@ -95,6 +95,39 @@ export const usersService = {
     return { items, page, pageSize, total };
   },
 
+  /** Customers list with order count + lifetime paid spend (for the admin panel). */
+  async listCustomers(query: { page?: unknown; pageSize?: unknown; search?: string; status?: string }) {
+    const base = await this.listUsers(query);
+    const ids = base.items.map((u) => u.id);
+    if (!ids.length) return { ...base, items: [] as (typeof base.items[number] & { orderCount: number; totalPaid: number })[] };
+    const [counts, paid] = await Promise.all([
+      prisma.order.groupBy({ by: ['userId'], where: { userId: { in: ids } }, _count: { _all: true } }),
+      prisma.order.groupBy({ by: ['userId'], where: { userId: { in: ids }, paidAt: { not: null } }, _sum: { grandTotal: true } }),
+    ]);
+    const countMap = new Map(counts.map((c) => [c.userId, c._count._all]));
+    const spentMap = new Map(paid.map((p) => [p.userId, Number(p._sum.grandTotal ?? 0)]));
+    return {
+      ...base,
+      items: base.items.map((u) => ({
+        ...u,
+        orderCount: countMap.get(u.id) ?? 0,
+        totalPaid: spentMap.get(u.id) ?? 0,
+      })),
+    };
+  },
+
+  /** A single customer's profile + full order history (admin). */
+  async customerOrders(userId: string) {
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: userSelect });
+    if (!user) throw new NotFoundError('User not found');
+    const orders = await prisma.order.findMany({
+      where: { userId },
+      orderBy: { placedAt: 'desc' },
+      include: { items: true },
+    });
+    return { user, orders };
+  },
+
   async setStatus(userId: string, status: string) {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundError('User not found');
