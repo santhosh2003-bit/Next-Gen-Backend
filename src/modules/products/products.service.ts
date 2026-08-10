@@ -17,7 +17,7 @@ import type {
 const productInclude = {
   images: { orderBy: { position: "asc" } },
   variants: true,
-  inventory: { select: { quantity: true, reserved: true, warehouseId: true } },
+  inventory: { select: { quantity: true, reserved: true, warehouseId: true, reorderLevel: true } },
   category: { select: { id: true, name: true, slug: true } },
   brand: { select: { id: true, name: true, slug: true } },
 } satisfies Prisma.ProductInclude;
@@ -127,7 +127,7 @@ export const productsService = {
   },
 
   async create(input: z.infer<typeof createProductSchema>) {
-    const { images, variants, stock, ...rest } = input;
+    const { images, variants, stock, lowStockThreshold, ...rest } = input;
     const created = await prisma.product.create({
       data: {
         ...rest,
@@ -137,11 +137,18 @@ export const productsService = {
       },
       include: productInclude,
     });
-    // Stock lives in Inventory, not on the product — set it (default warehouse)
-    // so the product isn't created as permanently out-of-stock.
-    if (stock != null) await inventoryService.setProductStock(created.id, stock);
+    // Stock + low-stock threshold live in Inventory, not on the product.
+    if (stock != null) await inventoryService.setProductStock(created.id, stock, lowStockThreshold);
+    else if (lowStockThreshold != null) await inventoryService.setReorderLevel(created.id, lowStockThreshold);
     await cache.invalidateNamespace('catalog');
-    return stock != null ? this.getById(created.id) : created;
+    return stock != null || lowStockThreshold != null ? this.getById(created.id) : created;
+  },
+
+  /** Add stock to a product's default-warehouse inventory (restock). */
+  async addStock(id: string, amount: number) {
+    await this.getById(id);
+    await inventoryService.addProductStock(id, amount);
+    return this.getById(id);
   },
 
   /** Bulk create — reuses `create` per item, capturing per-row results. */
@@ -154,15 +161,16 @@ export const productsService = {
       where: { id, deletedAt: null },
     });
     if (!existing) throw new NotFoundError("Product not found");
-    const { stock, ...rest } = input;
+    const { stock, lowStockThreshold, ...rest } = input;
     const updated = await prisma.product.update({
       where: { id },
       data: rest,
       include: productInclude,
     });
-    if (stock != null) await inventoryService.setProductStock(id, stock);
+    if (stock != null) await inventoryService.setProductStock(id, stock, lowStockThreshold);
+    else if (lowStockThreshold != null) await inventoryService.setReorderLevel(id, lowStockThreshold);
     await cache.invalidateNamespace('catalog');
-    return stock != null ? this.getById(id) : updated;
+    return stock != null || lowStockThreshold != null ? this.getById(id) : updated;
   },
 
   async remove(id: string) {

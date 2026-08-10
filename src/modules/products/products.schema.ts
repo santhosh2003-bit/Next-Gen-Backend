@@ -30,8 +30,13 @@ export const createProductSchema = z.object({
   status: z.enum(['DRAFT', 'ACTIVE', 'ARCHIVED', 'OUT_OF_STOCK']).optional(),
   attributes: z.record(z.any()).optional(),
   stock: z.number().int().min(0).optional(),
+  lowStockThreshold: z.number().int().min(0).optional(),
   images: z.array(productImageSchema).optional(),
   variants: z.array(productVariantSchema).optional(),
+});
+
+export const addStockSchema = z.object({
+  amount: z.number().int().refine((v) => v !== 0, 'Amount must not be zero'),
 });
 
 export const updateProductSchema = createProductSchema.partial().omit({ images: true, variants: true });

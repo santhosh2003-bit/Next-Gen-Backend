@@ -4,6 +4,7 @@ import { validate } from '../../common/validation.js';
 import { productsService } from './products.service.js';
 import { recordAudit } from '../../common/audit.js';
 import {
+  addStockSchema,
   bulkCreateProductSchema,
   createProductSchema,
   listProductsQuery,
@@ -53,6 +54,15 @@ export default async function productsRoutes(app: FastifyInstance) {
       metadata: { count: items.length, created: result.created, failed: result.failed }, ipAddress: req.ip,
     });
     return reply.status(201).send(ok(result));
+  });
+
+  // Restock — add (or remove with a negative amount) stock in one tap.
+  app.post('/:id/stock/add', write, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const { amount } = validate(addStockSchema, req.body);
+    const product = await productsService.addStock(id, amount);
+    await recordAudit({ userId: req.authUser!.id, action: 'product.stock.add', entity: 'product', entityId: id, metadata: { amount }, ipAddress: req.ip });
+    return reply.status(200).send(ok(product));
   });
 
   app.patch('/:id', write, async (req) => {

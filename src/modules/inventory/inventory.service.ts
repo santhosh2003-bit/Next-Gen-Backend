@@ -29,10 +29,38 @@ export const inventoryService = {
     return prisma.warehouse.create({ data: { name: 'Main Warehouse', code: 'MAIN', isActive: true } });
   },
 
-  /** Set a product's absolute stock in the default warehouse (creating the row). */
-  async setProductStock(productId: string, quantity: number, variantId?: string | null) {
+  /** Set a product's absolute stock (and optional reorder level) in the default warehouse. */
+  async setProductStock(productId: string, quantity: number, reorderLevel?: number) {
     const warehouse = await this.getOrCreateDefaultWarehouse();
-    return this.upsert({ productId, variantId: variantId ?? null, warehouseId: warehouse.id, quantity });
+    return this.upsert({ productId, variantId: null, warehouseId: warehouse.id, quantity, reorderLevel });
+  },
+
+  /** Set only the low-stock reorder level, without changing quantity. */
+  async setReorderLevel(productId: string, reorderLevel: number) {
+    const warehouse = await this.getOrCreateDefaultWarehouse();
+    const existing = await prisma.inventory.findFirst({
+      where: { productId, variantId: null, warehouseId: warehouse.id },
+    });
+    if (existing) {
+      await prisma.inventory.update({ where: { id: existing.id }, data: { reorderLevel } });
+    } else {
+      await prisma.inventory.create({
+        data: { productId, variantId: null, warehouseId: warehouse.id, quantity: 0, reorderLevel },
+      });
+    }
+    await cache.invalidateNamespace('catalog');
+  },
+
+  /** Add (or remove, with a negative amount) stock in the default warehouse. */
+  async addProductStock(productId: string, amount: number) {
+    const warehouse = await this.getOrCreateDefaultWarehouse();
+    const existing = await prisma.inventory.findFirst({
+      where: { productId, variantId: null, warehouseId: warehouse.id },
+    });
+    if (!existing) {
+      return this.upsert({ productId, variantId: null, warehouseId: warehouse.id, quantity: Math.max(0, amount) });
+    }
+    return this.adjust({ productId, variantId: null, warehouseId: warehouse.id, delta: amount, reference: 'restock' });
   },
 
   // ── Stock levels ───────────────────────────────────────
