@@ -29,6 +29,7 @@ export const createProductSchema = z.object({
   taxRate: z.number().min(0).max(100).optional(),
   status: z.enum(['DRAFT', 'ACTIVE', 'ARCHIVED', 'OUT_OF_STOCK']).optional(),
   attributes: z.record(z.any()).optional(),
+  stock: z.number().int().min(0).optional(),
   images: z.array(productImageSchema).optional(),
   variants: z.array(productVariantSchema).optional(),
 });

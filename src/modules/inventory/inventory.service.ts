@@ -22,6 +22,19 @@ export const inventoryService = {
     return prisma.warehouse.create({ data: input });
   },
 
+  /** Return the first warehouse, creating a default one if none exist yet. */
+  async getOrCreateDefaultWarehouse() {
+    const existing = await prisma.warehouse.findFirst({ orderBy: { name: 'asc' } });
+    if (existing) return existing;
+    return prisma.warehouse.create({ data: { name: 'Main Warehouse', code: 'MAIN', isActive: true } });
+  },
+
+  /** Set a product's absolute stock in the default warehouse (creating the row). */
+  async setProductStock(productId: string, quantity: number, variantId?: string | null) {
+    const warehouse = await this.getOrCreateDefaultWarehouse();
+    return this.upsert({ productId, variantId: variantId ?? null, warehouseId: warehouse.id, quantity });
+  },
+
   // ── Stock levels ───────────────────────────────────────
   async getForProduct(productId: string) {
     return prisma.inventory.findMany({

@@ -6,6 +6,7 @@ import { uniqueSlug } from "../../common/slug.js";
 import { cache } from '../../common/redis.js';
 import { deleteFromCloudinary } from '../../common/cloudinary.js';
 import { runBulk } from '../../common/bulk.js';
+import { inventoryService } from '../inventory/inventory.service.js';
 import type { z } from "zod";
 import type {
   createProductSchema,
@@ -126,7 +127,7 @@ export const productsService = {
   },
 
   async create(input: z.infer<typeof createProductSchema>) {
-    const { images, variants, ...rest } = input;
+    const { images, variants, stock, ...rest } = input;
     const created = await prisma.product.create({
       data: {
         ...rest,
@@ -136,8 +137,11 @@ export const productsService = {
       },
       include: productInclude,
     });
+    // Stock lives in Inventory, not on the product — set it (default warehouse)
+    // so the product isn't created as permanently out-of-stock.
+    if (stock != null) await inventoryService.setProductStock(created.id, stock);
     await cache.invalidateNamespace('catalog');
-    return created;
+    return stock != null ? this.getById(created.id) : created;
   },
 
   /** Bulk create — reuses `create` per item, capturing per-row results. */
@@ -150,13 +154,15 @@ export const productsService = {
       where: { id, deletedAt: null },
     });
     if (!existing) throw new NotFoundError("Product not found");
+    const { stock, ...rest } = input;
     const updated = await prisma.product.update({
       where: { id },
-      data: input,
+      data: rest,
       include: productInclude,
     });
+    if (stock != null) await inventoryService.setProductStock(id, stock);
     await cache.invalidateNamespace('catalog');
-    return updated;
+    return stock != null ? this.getById(id) : updated;
   },
 
   async remove(id: string) {
