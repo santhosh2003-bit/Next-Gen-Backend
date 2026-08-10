@@ -16,7 +16,7 @@ const DEFAULT_SITE: Required<Omit<SiteSettings, 'address' | 'social'>> & {
   tagline: 'Seeds, fodder & farm essentials',
   about:
     'Established in 2024 in Telangana, Good And Green Agro Farms is a trusted trader and retailer of grass seed, animal grass, fodder and related agricultural products, serving farming communities with transparent pricing and dependable order fulfilment.',
-  ownerName: 'Ramesh',
+  ownerName: 'Mahesh',
   phone: '+91 83281 37495',
   supportPhone: '+91 83281 37495',
   whatsapp: '918328137495',
